@@ -121,6 +121,17 @@ export interface LessonInput {
   duration_minutes: number | null
 }
 
+export interface Asset {
+  id: Uuid
+  course_id: Uuid
+  lesson_id: Uuid | null
+  filename: string
+  content_type: string
+  size_bytes: number
+  checksum_sha256: string
+  created_at: IsoDateTime
+}
+
 export interface CourseModule {
   id: Uuid
   course_id: Uuid

@@ -52,6 +52,9 @@ export interface RequestOptions {
   signal?: AbortSignal
   /** Path is outside /api/v1 (e.g. /health). */
   raw?: boolean
+  /** Send this body verbatim instead of JSON (e.g. a File for an upload). When it's a
+   *  File/Blob the browser sets Content-Type from the blob; `body` is ignored. */
+  rawBody?: BodyInit
 }
 
 /** Everything a caller might want from one exchange; most callers only use `data`. */
@@ -88,14 +91,23 @@ async function parseBody(response: Response): Promise<unknown> {
 
 function send(path: string, options: RequestOptions, token: string | null): Promise<Response> {
   const headers = new Headers({ Accept: 'application/json' })
-  if (options.body !== undefined) headers.set('Content-Type', 'application/json')
+  const hasRaw = options.rawBody !== undefined
+  // Leave Content-Type unset for a raw body: the browser fills it from a File/Blob, which
+  // is how the server learns the upload's MIME type.
+  if (!hasRaw && options.body !== undefined) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey)
+
+  const body = hasRaw
+    ? options.rawBody
+    : options.body === undefined
+      ? undefined
+      : JSON.stringify(options.body)
 
   return fetch(buildUrl(path, options.query, options.raw ?? false), {
     method: options.method ?? 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body,
     signal: options.signal,
   })
 }
@@ -208,6 +220,24 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: VerbOptions) =>
     dataOf<T>(path, { ...options, method: 'PATCH', body }),
   delete: (path: string, options?: VerbOptions) => dataOf<null>(path, { ...options, method: 'DELETE' }),
+  /** POST a file as the raw request body (the asset upload endpoint). */
+  upload: <T>(path: string, file: File, options?: VerbOptions) =>
+    dataOf<T>(path, { ...options, method: 'POST', rawBody: file }),
+}
+
+/**
+ * Fetch a protected binary (an asset's bytes) with the session token and hand back a
+ * Blob. A plain <a href> can't carry the Authorization header, so downloads go through
+ * fetch; the caller turns the Blob into an object URL to save or preview.
+ */
+export async function downloadBlob(path: string, query?: Query): Promise<Blob> {
+  const token = await sessionToken()
+  const response = await send(path, { method: 'GET', query }, token)
+  if (!response.ok) {
+    const body = (await parseBody(response)) as Partial<ErrorBody>
+    throw new ApiError(response.status, body, response.statusText)
+  }
+  return response.blob()
 }
 
 export function newIdempotencyKey(): string {

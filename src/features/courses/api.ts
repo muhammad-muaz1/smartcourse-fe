@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
-import { api, newIdempotencyKey, request } from '@/lib/api/client'
+import { api, downloadBlob, newIdempotencyKey, request } from '@/lib/api/client'
 import type {
+  Asset,
   Course,
   CourseDetail,
   CourseInput,
@@ -29,6 +30,7 @@ export const courseKeys = {
   detail: (id: string) => [...courseKeys.all, 'detail', id] as const,
   modules: (courseId: string) => [...courseKeys.all, 'modules', courseId] as const,
   lesson: (id: string) => [...courseKeys.all, 'lesson', id] as const,
+  lessonAssets: (lessonId: string) => [...courseKeys.all, 'lesson', lessonId, 'assets'] as const,
   publishRuns: (courseId: string) => [...courseKeys.all, 'publish-runs', courseId] as const,
   publishRun: (courseId: string, runId: string) =>
     [...courseKeys.publishRuns(courseId), runId] as const,
@@ -69,6 +71,17 @@ export const coursesApi = {
   reorderLessons: (moduleId: string, lessonIds: string[]) =>
     api.put<LessonSummary[]>(`/modules/${moduleId}/lessons/order`, { lesson_ids: lessonIds }),
 
+  // Assets (lesson attachments). Upload streams the file as the raw body; course_id,
+  // filename and the optional lesson_id ride in the query string.
+  lessonAssets: (lessonId: string, signal?: AbortSignal) =>
+    api.get<Asset[]>(`/lessons/${lessonId}/assets`, { signal }),
+  uploadAsset: (file: File, args: { courseId: string; lessonId?: string }) =>
+    api.upload<Asset>('/assets', file, {
+      query: { course_id: args.courseId, lesson_id: args.lessonId, filename: file.name },
+    }),
+  deleteAsset: (assetId: string) => api.delete(`/assets/${assetId}`),
+  downloadAsset: (asset: Asset) => downloadBlob(`/assets/${asset.id}/content`),
+
   /** 202 + run resource. The key makes a double-click or retry return the same run. */
   publish: (courseId: string, idempotencyKey = newIdempotencyKey()) =>
     request<PublishRun>(`/courses/${courseId}/publish`, { method: 'POST', idempotencyKey }),
@@ -97,6 +110,12 @@ export const lessonQuery = (id: string) =>
     queryKey: courseKeys.lesson(id),
     queryFn: ({ signal }) => coursesApi.lesson(id, signal),
     staleTime: 5 * 60_000,
+  })
+
+export const lessonAssetsQuery = (lessonId: string) =>
+  queryOptions({
+    queryKey: courseKeys.lessonAssets(lessonId),
+    queryFn: ({ signal }) => coursesApi.lessonAssets(lessonId, signal),
   })
 
 export const publishRunsQuery = (courseId: string) =>

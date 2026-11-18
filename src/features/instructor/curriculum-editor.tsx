@@ -6,7 +6,7 @@ import { Field, Input, Textarea } from '@/components/ui/form'
 import { Modal } from '@/components/ui/modal'
 import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives'
 import { coursesApi, courseKeys, lessonQuery, modulesQuery } from '@/features/courses/api'
-import type { CourseModule, LessonInput, LessonSummary, ModuleInput } from '@/lib/api/types'
+import type { CourseModule, Lesson, LessonInput, LessonSummary, ModuleInput } from '@/lib/api/types'
 import { LessonForm } from './lesson-form'
 
 function swap<T>(items: T[], i: number, j: number): T[] {
@@ -77,11 +77,11 @@ function ModuleForm({ module, pending, onSubmit }: { module: CourseModule; pendi
 }
 
 /** Loads the full lesson (body included) before showing the edit form. */
-function EditLesson({ lessonId, onSubmit }: { lessonId: string; onSubmit: (input: LessonInput) => Promise<unknown> }) {
+function EditLesson({ lessonId, courseId, onSubmit, onComplete }: { lessonId: string; courseId: string; onSubmit: (input: LessonInput) => Promise<Lesson>; onComplete: () => void }) {
   const lesson = useQuery(lessonQuery(lessonId))
   if (lesson.isPending) return <div className="space-y-3"><Skeleton className="h-9" /><Skeleton className="h-40" /></div>
   if (lesson.isError) return <ErrorState error={lesson.error} onRetry={() => void lesson.refetch()} />
-  return <LessonForm initial={lesson.data} submitLabel="Save lesson" onSubmit={onSubmit} />
+  return <LessonForm initial={lesson.data} submitLabel="Save lesson" courseId={courseId} onSubmit={onSubmit} onComplete={onComplete} />
 }
 
 function LessonRow({ lesson, index, total, editable, onMove, onEdit, onDelete }: {
@@ -221,12 +221,12 @@ export function CurriculumEditor({ courseId, editable }: { courseId: string; edi
       <Modal open={dialog?.kind === 'add-lesson'} onClose={close} title="Add lesson"
         description={dialog?.kind === 'add-lesson' ? `In “${dialog.module.title}”` : undefined} className="max-w-2xl">
         {dialog?.kind === 'add-lesson' && (
-          <LessonForm onSubmit={(input) => m.addLesson.mutateAsync({ moduleId: dialog.module.id, input }).then(close)} />
+          <LessonForm courseId={courseId} onComplete={close} onSubmit={(input) => m.addLesson.mutateAsync({ moduleId: dialog.module.id, input })} />
         )}
       </Modal>
       <Modal open={dialog?.kind === 'edit-lesson'} onClose={close} title="Edit lesson" className="max-w-2xl">
         {dialog?.kind === 'edit-lesson' && (
-          <EditLesson lessonId={dialog.lessonId} onSubmit={(input) => m.updateLesson.mutateAsync({ id: dialog.lessonId, input }).then(close)} />
+          <EditLesson lessonId={dialog.lessonId} courseId={courseId} onComplete={close} onSubmit={(input) => m.updateLesson.mutateAsync({ id: dialog.lessonId, input })} />
         )}
       </Modal>
       <Modal open={dialog?.kind === 'edit-module'} onClose={close} title="Edit module">

@@ -1,12 +1,31 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Info } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Download, Info, Paperclip, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
+import { courseKeys, coursesApi, lessonAssetsQuery } from '@/features/courses/api'
 import { Button } from '@/components/ui/button'
 import { FileDropzone } from '@/components/ui/file-dropzone'
 import { Field, Input, Select, Textarea } from '@/components/ui/form'
-import type { Lesson, LessonInput } from '@/lib/api/types'
+import { errorMessage } from '@/lib/api/client'
+import type { Asset, Lesson, LessonInput } from '@/lib/api/types'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const kb = bytes / 1024
+  return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`
+}
+
+/** Save a fetched Blob to disk under the asset's original name. */
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.mkv']
 const DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.md', '.csv', '.zip']
@@ -61,24 +80,63 @@ function toValues(lesson?: Lesson): FormValues {
 const UPLOAD_NOTE = (
   <span className="flex items-start gap-1.5">
     <Info className="mt-0.5 size-3.5 shrink-0" />
-    <span>
-      Files are staged here. They&apos;re sent once the content service&apos;s asset upload (<code>POST /assets</code>) is live — until
-      then, link videos by URL.
-    </span>
+    <span>Uploaded to object storage when you save the lesson. Large videos: link by URL instead.</span>
   </span>
 )
+
+/** Existing attachments for a saved lesson: list, download, remove. Shown only when
+ *  editing (a new lesson has no id to hang assets off until its first save). */
+function ExistingAttachments({ lessonId }: { lessonId: string }) {
+  const queryClient = useQueryClient()
+  const assets = useQuery(lessonAssetsQuery(lessonId))
+  const download = useMutation({
+    mutationFn: async (asset: Asset) => saveBlob(await coursesApi.downloadAsset(asset), asset.filename),
+  })
+  const remove = useMutation({
+    mutationFn: (assetId: string) => coursesApi.deleteAsset(assetId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lessonAssets(lessonId) }),
+    meta: { successMessage: 'Attachment removed' },
+  })
+  const items = assets.data ?? []
+  if (!items.length) return null
+  return (
+    <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      {items.map((asset) => (
+        <li key={asset.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+          <Paperclip className="size-4 shrink-0 text-zinc-400" />
+          <span className="flex-1 truncate">{asset.filename}</span>
+          <span className="text-xs text-zinc-400">{formatBytes(asset.size_bytes)}</span>
+          <Button variant="ghost" size="icon" aria-label={`Download ${asset.filename}`} loading={download.isPending && download.variables?.id === asset.id} onClick={() => download.mutate(asset)}>
+            <Download className="size-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label={`Remove ${asset.filename}`} loading={remove.isPending && remove.variables === asset.id} onClick={() => remove.mutate(asset.id)}>
+            <Trash2 className="size-3.5 text-rose-500" />
+          </Button>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export function LessonForm({
   initial,
   submitLabel = 'Add lesson',
+  courseId,
   onSubmit,
+  onComplete,
 }: {
   initial?: Lesson
   submitLabel?: string
-  onSubmit: (input: LessonInput) => Promise<unknown>
+  courseId: string
+  /** Saves the lesson and resolves to it, so staged files can be attached to its id. */
+  onSubmit: (input: LessonInput) => Promise<Lesson>
+  /** Called after the lesson and its attachments are saved (e.g. to close the dialog). */
+  onComplete?: () => void
 }) {
+  const queryClient = useQueryClient()
   const [videoFile, setVideoFile] = useState<File[]>([])
   const [attachments, setAttachments] = useState<File[]>([])
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -89,15 +147,32 @@ export function LessonForm({
   const type = useWatch({ control, name: 'lesson_type' })
 
   const submit = handleSubmit(async (values) => {
+    setUploadError(null)
     try {
-      await onSubmit(toInput(values))
+      const lesson = await onSubmit(toInput(values))
+      // The lesson is saved; now upload the staged attachments against its id. Done one
+      // at a time so a failure names the file that failed and the rest are left staged.
+      const remaining: File[] = []
+      for (const file of attachments) {
+        try {
+          await coursesApi.uploadAsset(file, { courseId, lessonId: lesson.id })
+        } catch (error) {
+          remaining.push(file)
+          setUploadError(`${file.name}: ${errorMessage(error)}`)
+        }
+      }
+      setAttachments(remaining)
+      if (attachments.length) {
+        await queryClient.invalidateQueries({ queryKey: courseKeys.lessonAssets(lesson.id) })
+      }
+      if (remaining.length) return // keep the form open so the user can retry
       if (!initial) {
         reset()
         setVideoFile([])
-        setAttachments([])
       }
+      onComplete?.()
     } catch {
-      // Surfaced by the global mutation toast; keep the form so nothing typed is lost.
+      // Lesson save failed — surfaced by the global mutation toast. Keep the form.
     }
   })
 
@@ -143,18 +218,22 @@ export function LessonForm({
         </>
       )}
 
-      <FileDropzone
-        label="Attachments (optional)"
-        extensions={DOCUMENT_EXTENSIONS}
-        maxBytes={50 * MB}
-        multiple
-        files={attachments}
-        onChange={setAttachments}
-        note={UPLOAD_NOTE}
-      />
+      <div className="space-y-2">
+        {initial && <ExistingAttachments lessonId={initial.id} />}
+        <FileDropzone
+          label="Attachments (optional)"
+          extensions={DOCUMENT_EXTENSIONS}
+          maxBytes={50 * MB}
+          multiple
+          files={attachments}
+          onChange={setAttachments}
+          note={UPLOAD_NOTE}
+        />
+        {uploadError && <p className="text-sm text-rose-600 dark:text-rose-400">{uploadError}</p>}
+      </div>
 
       <div className="flex justify-end">
-        <Button type="submit" loading={isSubmitting} disabled={!!initial && !isDirty}>
+        <Button type="submit" loading={isSubmitting} disabled={!!initial && !isDirty && attachments.length === 0}>
           {submitLabel}
         </Button>
       </div>
