@@ -33,6 +33,7 @@ export function FileDropzone({
   onChange,
   note,
   kind = 'document',
+  formatsLabel,
 }: {
   label: string
   /** Lower-case extensions including the dot, e.g. ['.pdf', '.docx']. */
@@ -43,6 +44,8 @@ export function FileDropzone({
   onChange: (files: File[]) => void
   note?: ReactNode
   kind?: 'document' | 'video'
+  /** Human summary of accepted formats, for when listing every extension would be too long. */
+  formatsLabel?: string
 }) {
   const id = useId()
   const [dragging, setDragging] = useState(false)
@@ -68,7 +71,7 @@ export function FileDropzone({
   }
 
   const Icon = kind === 'video' ? Film : FileText
-  const formats = extensions.map((e) => e.slice(1).toUpperCase()).join(', ')
+  const formats = formatsLabel ?? extensions.map((e) => e.slice(1).toUpperCase()).join(', ')
 
   return (
     <div className="space-y-2">

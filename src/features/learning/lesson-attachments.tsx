@@ -20,21 +20,22 @@ import { Skeleton, Spinner } from '@/components/ui/primitives'
 import { coursesApi, lessonAssetsQuery } from '@/features/courses/api'
 import { errorMessage } from '@/lib/api/client'
 import type { Asset } from '@/lib/api/types'
-import { fileExtension, formatBytes, previewOf, saveBlob } from '@/lib/files'
+import { attachmentGroup, fileExtension, formatBytes, PREVIEWABLE_KIND, previewOf, saveBlob, type AttachmentGroup } from '@/lib/files'
 
-const ICONS: [string[], LucideIcon][] = [
-  [['pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md'], FileText],
-  [['xls', 'xlsx', 'ods', 'csv'], FileSpreadsheet],
-  [['ppt', 'pptx', 'odp', 'key'], Presentation],
-  [['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg'], FileImage],
-  [['mp4', 'webm', 'ogv', 'mov', 'mkv'], FileVideo],
-  [['mp3', 'wav', 'ogg', 'm4a'], FileAudio],
-  [['zip', 'rar', '7z', 'tar', 'gz'], FileArchive],
-]
+const GROUP_ICONS: Record<AttachmentGroup, LucideIcon> = {
+  document: FileText,
+  spreadsheet: FileSpreadsheet,
+  presentation: Presentation,
+  image: FileImage,
+  archive: FileArchive,
+}
 
 function iconFor(filename: string): LucideIcon {
-  const ext = fileExtension(filename)
-  return ICONS.find(([exts]) => exts.includes(ext))?.[1] ?? File
+  const group = attachmentGroup(filename)
+  if (group) return GROUP_ICONS[group]
+  // Older uploads or lesson videos stored as assets.
+  const kind = PREVIEWABLE_KIND[fileExtension(filename)]
+  return kind === 'video' ? FileVideo : kind === 'audio' ? FileAudio : File
 }
 
 /**

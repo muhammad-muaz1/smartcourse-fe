@@ -10,10 +10,9 @@ import { FileDropzone } from '@/components/ui/file-dropzone'
 import { Field, Input, Select, Textarea } from '@/components/ui/form'
 import { errorMessage } from '@/lib/api/client'
 import type { Asset, Lesson, LessonInput } from '@/lib/api/types'
-import { formatBytes, saveBlob } from '@/lib/files'
+import { ATTACHMENT_EXTENSIONS, formatBytes, saveBlob } from '@/lib/files'
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.mkv']
-const DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.md', '.csv', '.zip']
 const GB = 1024 ** 3
 const MB = 1024 ** 2
 
@@ -207,7 +206,8 @@ export function LessonForm({
         {initial && <ExistingAttachments lessonId={initial.id} />}
         <FileDropzone
           label="Attachments (optional)"
-          extensions={DOCUMENT_EXTENSIONS}
+          extensions={ATTACHMENT_EXTENSIONS}
+          formatsLabel="Documents, spreadsheets, slides, images (JPG, PNG, GIF, WebP, SVG, HEIC…) and ZIP"
           maxBytes={50 * MB}
           multiple
           files={attachments}

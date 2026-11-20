@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileExtension, formatBytes, previewOf } from './files'
+import { ATTACHMENT_EXTENSIONS, attachmentGroup, fileExtension, formatBytes, previewOf } from './files'
 
 describe('fileExtension', () => {
   it('lower-cases the last extension', () => expect(fileExtension('Report.Final.PDF')).toBe('pdf'))
@@ -31,5 +31,28 @@ describe('formatBytes', () => {
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(2048)).toBe('2 KB')
     expect(formatBytes(5 * 1024 ** 2)).toBe('5.0 MB')
+  })
+})
+
+describe('attachment allow-list', () => {
+  it('accepts every common document and image type', () => {
+    for (const ext of ['.pdf', '.docx', '.odt', '.rtf', '.xlsx', '.pptx', '.jpg', '.jpeg', '.png', '.heic', '.svg', '.zip']) {
+      expect(ATTACHMENT_EXTENSIONS).toContain(ext)
+    }
+  })
+  it('has no duplicates and never allows HTML or executables', () => {
+    expect(new Set(ATTACHMENT_EXTENSIONS).size).toBe(ATTACHMENT_EXTENSIONS.length)
+    for (const ext of ['.html', '.htm', '.js', '.exe', '.sh']) expect(ATTACHMENT_EXTENSIONS).not.toContain(ext)
+  })
+  it('groups files by extension', () => {
+    expect(attachmentGroup('photo.JPEG')).toBe('image')
+    expect(attachmentGroup('budget.ods')).toBe('spreadsheet')
+    expect(attachmentGroup('deck.key')).toBe('presentation')
+    expect(attachmentGroup('page.html')).toBeNull()
+  })
+  it('previews browser-renderable images only', () => {
+    expect(previewOf({ filename: 'a.jpeg', size_bytes: 1 })?.kind).toBe('image')
+    expect(previewOf({ filename: 'a.bmp', size_bytes: 1 })?.kind).toBe('image')
+    expect(previewOf({ filename: 'a.heic', size_bytes: 1 })).toBeNull()
   })
 })
