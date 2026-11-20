@@ -10,6 +10,7 @@ import type { LessonSummary } from '@/lib/api/types'
 import { useDocumentTitle } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import { enrollmentQuery, learningApi, learningKeys, progressQuery } from './api'
+import { LessonAttachments } from './lesson-attachments'
 import { LessonBody } from './lesson-body'
 
 function LessonView({ lessonId }: { lessonId: string }) {
@@ -28,6 +29,7 @@ function LessonView({ lessonId }: { lessonId: string }) {
     <article className="animate-fade-in">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{lesson.title}</h1>
       <LessonBody lesson={lesson} />
+      <LessonAttachments lessonId={lesson.id} />
     </article>
   )
 }

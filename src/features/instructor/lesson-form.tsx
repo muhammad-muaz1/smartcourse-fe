@@ -10,22 +10,7 @@ import { FileDropzone } from '@/components/ui/file-dropzone'
 import { Field, Input, Select, Textarea } from '@/components/ui/form'
 import { errorMessage } from '@/lib/api/client'
 import type { Asset, Lesson, LessonInput } from '@/lib/api/types'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const kb = bytes / 1024
-  return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`
-}
-
-/** Save a fetched Blob to disk under the asset's original name. */
-function saveBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
+import { formatBytes, saveBlob } from '@/lib/files'
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.mkv']
 const DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.md', '.csv', '.zip']
